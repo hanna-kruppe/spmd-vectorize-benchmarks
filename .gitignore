@@ -1,0 +1,8 @@
+*.o
+*.a
+*.elf
+*.hex
+*/target/*
+*.log
+*.s
+*.ll

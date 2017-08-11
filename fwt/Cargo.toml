@@ -1,0 +1,10 @@
+[package]
+name = "fwt"
+version = "0.1.0"
+authors = ["Robin Kruppe <robin.kruppe@gmail.com>"]
+
+[build-dependencies]
+rand = "0.3.15"
+
+[dependencies]
+nyuzi_support = { path = "../_rust_support" }

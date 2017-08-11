@@ -1,0 +1,7 @@
+[package]
+name = "fib"
+version = "0.1.0"
+authors = ["Robin Kruppe <robin.kruppe@gmail.com>"]
+
+[dependencies]
+nyuzi_support = { path = "../_rust_support" }

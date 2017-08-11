@@ -1,0 +1,6 @@
+[package]
+name = "nyuzi_support"
+version = "0.1.0"
+authors = ["Robin Kruppe <robin.kruppe@gmail.com>"]
+
+[dependencies]
