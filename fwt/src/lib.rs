@@ -16,6 +16,7 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 ********************************************************************/
 
 #![no_std]
+#![allow(dead_code, unused_imports)]
 extern crate nyuzi_support;
 use core::cell::Cell;
 use core::mem::transmute;
@@ -38,7 +39,7 @@ fn fwt_kernel(xs: &[Cell<f32>], step: usize, tid: usize) {
 }
 
 /* tid = get_global_id(0) */
-fn fwt_nomod_kernel(xs: &[Cell<f32>], step: usize, step_log2: usize, tid: usize) {
+fn fwt_nodivmod_kernel(xs: &[Cell<f32>], step: usize, step_log2: usize, tid: usize) {
     let group = tid & (step - 1);
     let pair = 2 * step * (tid >> step_log2) + group;
 
@@ -58,10 +59,15 @@ include!(concat!(env!("OUT_DIR"), "/input.rs"));
 
 static mut INPUT: [f32; LENGTH] = [0.0; LENGTH];
 
+unsafe fn get_data() -> &'static [Cell<f32>] {
+    INPUT.copy_from_slice(&INPUT_INIT);
+    &*(&mut INPUT as *mut [f32] as *const [Cell<f32>])
+}
+
 #[no_mangle]
+#[cfg(all(benchmark="fwt", variant="scalar"))]
 pub extern fn fwt_scalar() {
-    unsafe { INPUT.copy_from_slice(&INPUT_INIT); }
-    let xs = unsafe { transmute::<&mut [f32], &[Cell<f32>]>(&mut INPUT) };
+    let xs = unsafe { get_data() };
     let mut step = 1;
     while step < xs.len() {
         for tid in 0..(xs.len() / 2) {
@@ -72,9 +78,9 @@ pub extern fn fwt_scalar() {
 }
 
 #[no_mangle]
+#[cfg(all(benchmark="fwt", variant="spmd"))]
 pub extern fn fwt_spmd() {
-    unsafe { INPUT.copy_from_slice(&INPUT_INIT); }
-    let xs = unsafe { transmute::<&mut [f32], &[Cell<f32>]>(&mut INPUT) };
+    let xs = unsafe { get_data() };
     let mut step = 1;
     while step < xs.len() {
         spmd_range(0..xs.len() / 2, |tid: usize| {
@@ -85,14 +91,14 @@ pub extern fn fwt_spmd() {
 }
 
 #[no_mangle]
-pub extern fn fwt_nomod_scalar() {
-    unsafe { INPUT.copy_from_slice(&INPUT_INIT); }
-    let xs = unsafe { transmute::<&mut [f32], &[Cell<f32>]>(&mut INPUT) };
+#[cfg(all(benchmark="fwt_nodivmod", variant="scalar"))]
+pub extern fn fwt_nodivmod_scalar() {
+    let xs = unsafe { get_data() };
     let mut step = 1;
     let mut step_log2 = 1;
     while step < xs.len() {
         for tid in 0..(xs.len() / 2) {
-            fwt_nomod_kernel(xs, step, step_log2, tid);
+            fwt_nodivmod_kernel(xs, step, step_log2, tid);
         }
         step <<= 1;
         step_log2 += 1;
@@ -100,16 +106,16 @@ pub extern fn fwt_nomod_scalar() {
 }
 
 #[no_mangle]
-pub extern fn fwt_nomod_spmd() {
-    unsafe { INPUT.copy_from_slice(&INPUT_INIT); }
-    let xs = unsafe { transmute::<&mut [f32], &[Cell<f32>]>(&mut INPUT) };
+#[cfg(all(benchmark="fwt_nodivmod", variant="spmd"))]
+pub extern fn fwt_nodivmod_spmd() {
+    let xs = unsafe { get_data() };
     let mut step = 1;
     let mut step_log2 = 0;
     while step < xs.len() {
         spmd_range(0..xs.len() / 2, |tid: usize| {
-            fwt_nomod_kernel(xs, step, step_log2, tid);
+            fwt_nodivmod_kernel(xs, step, step_log2, tid);
         });
         step <<= 1;
-        step_log2+=1;
+        step_log2 += 1;
     }
 }

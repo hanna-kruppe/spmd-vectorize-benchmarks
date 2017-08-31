@@ -18,19 +18,20 @@
 
 #include <nyuzi.h>
 #include <schedule.h>
+#include <registers.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <vga.h>
 
 const int MAX_ITERATIONS = 255;
-const int SCREEN_WIDTH = 32; // 320;
-const int SCREEN_HEIGHT = 8; // 240;
+const int SCREEN_WIDTH = 64;
+const int SCREEN_HEIGHT = 16;
 const float X_STEP = 2.5 / SCREEN_WIDTH;
 const float Y_STEP = 2.0 / SCREEN_HEIGHT;
 const int VECTOR_LANES = 16;
 
-// Compute the color for one pixel
+// Scalar/SPMD kernel
+#if defined(VARIANT_SCALAR) || defined(VARIANT_SPMD)
 static int kernel(float x0, float y0) {
   float x = 0.0;
   float y = 0.0;
@@ -50,7 +51,9 @@ static int kernel(float x0, float y0) {
   // Not escaped within MAX_ITERATIONS => color black
   return 0;
 }
+#endif
 
+#ifdef VARIANT_INTRIN
 static void manually_vectorized(veci16_t *out, vecf16_t x0, float y0) {
 #define mask_cmpf_lt __builtin_nyuzi_mask_cmpf_lt
 #define mask_cmpi_ult __builtin_nyuzi_mask_cmpi_ult
@@ -79,7 +82,9 @@ static void manually_vectorized(veci16_t *out, vecf16_t x0, float y0) {
                      (iteration << 2) + 80) |
          (veci16_t)0xff000000;
 }
+#endif
 
+#ifdef VARIANT_SPMD
 struct KernelData {
   int *out;
   float *x0;
@@ -92,30 +97,53 @@ static void kernel_wrapper(void *_data) {
   float y0 = data->y0;
   data->out[__builtin_nyuzi_spmd_lane_id()] = kernel(x0, y0);
 }
+#endif
 
 // Benchmark harness integration
 __attribute__((aligned(64))) int BUF[SCREEN_WIDTH * SCREEN_HEIGHT];
 
-__attribute__((always_inline)) static void
+static void
 fill(void (*fill_one)(int *, vecf16_t, float)) {
+#if USE_THREADS
+  static volatile int stop_count = 0;
+  static volatile int next_thread_id = 0;
+  const int NUM_THREADS = 4;
+  int my_thread_id = __sync_fetch_and_add(&next_thread_id, 1);
+  if (my_thread_id == 0) {
+    start_all_threads();
+  }
+#else
+  const int NUM_THREADS = 1;
+#endif
+
   vecf16_t initial_x0 = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15};
   initial_x0 = initial_x0 * X_STEP - 2.0;
 
-  for (int row = 0; row < SCREEN_HEIGHT; ++row) {
+  for (int row = 0; row < SCREEN_HEIGHT; row += NUM_THREADS) {
     int *ptr = BUF + row * SCREEN_WIDTH;
     vecf16_t x0 = initial_x0;
     float y0 = Y_STEP * row - 1.0;
     for (int col = 0; col < SCREEN_WIDTH; col += VECTOR_LANES) {
       fill_one(ptr, x0, y0);
-
-      // *ptr = manually_vectorized(x0, y0);
       ptr += VECTOR_LANES;
       x0 += X_STEP * VECTOR_LANES;
     }
   }
+#if USE_THREADS
+    __sync_fetch_and_add(&stop_count, 1);
+    if (my_thread_id == 0) {
+      while (stop_count != NUM_THREADS)
+        ;
+      REGISTERS[REG_THREAD_HALT] = 0xffffffe;
+    } else {
+      while (1)
+        ;
+    }
+#endif
 }
 
 extern "C" {
+#ifdef VARIANT_SCALAR
 void mandelbrot_scalar() {
   fill([](int *out, vecf16_t x0, float y0) {
     for (int i = 0; i < VECTOR_LANES; ++i) {
@@ -123,7 +151,9 @@ void mandelbrot_scalar() {
     }
   });
 }
+#endif
 
+#ifdef VARIANT_SPMD
 void mandelbrot_spmd() {
   fill([](int *out, vecf16_t x0, float y0) {
     KernelData kernel_data = {out, (float *)&x0, y0};
@@ -131,12 +161,15 @@ void mandelbrot_spmd() {
                               &kernel_data);
   });
 }
+#endif
 
-void mandelbrot_intrinsics() {
+#ifdef VARIANT_INTRIN
+void mandelbrot_intrin() {
   fill([](int *out, vecf16_t x0, float y0) {
     manually_vectorized((veci16_t *)out, x0, y0);
   });
 }
+#endif
 }
 
 // This main function is useful for manual correctness testing,

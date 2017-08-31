@@ -18,6 +18,7 @@
 #include <schedule.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <registers.h>
 
 //
 // This benchmark attempts to roughly simulate the workload of Bitcoin hashing,
@@ -27,7 +28,21 @@
 // threads, there are 64 hashes running simultaneously.
 //
 
+const unsigned int K[] = {
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
+    0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
+    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
+    0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
+    0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
+    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+    0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
+    0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
+    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
+
 // Intrinsic implementation, taken verbatim from nyuzi benchmark
+#ifdef VARIANT_INTRIN
 inline vecu16_t CH(vecu16_t x, vecu16_t y, vecu16_t z) {
   return (x & y) ^ (~x & z);
 }
@@ -46,21 +61,7 @@ inline vecu16_t SIG1(vecu16_t x) {
   return ROTR(x, 6) ^ ROTR(x, 11) ^ ROTR(x, 25);
 }
 
-const unsigned int K[] = {
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
-    0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
-    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
-    0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
-    0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
-    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
-    0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
-    0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
-    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2};
-
-// Run 16 parallel hashes
-__attribute__((noinline)) static void
+static void
 sha2Hash(vecu16_t pointers, int totalBlocks, vecu16_t outHashes) {
   // Initial H values
   vecu16_t h0 = vecu16_t(0x6A09E667);
@@ -126,9 +127,10 @@ sha2Hash(vecu16_t pointers, int totalBlocks, vecu16_t outHashes) {
   __builtin_nyuzi_scatter_storei(outHashes + 24, h6);
   __builtin_nyuzi_scatter_storei(outHashes + 28, h7);
 }
-// End intrinsic implementation
+#endif // End intrinsic implementation
 
-// Start scalar/spmd implementation
+// Functions shared be scalar/spmd implementation
+#if defined(VARIANT_SCALAR) || defined(VARIANT_SPMD)
 inline unsigned CH(unsigned x, unsigned y, unsigned z) {
   return (x & y) ^ (~x & z);
 }
@@ -215,7 +217,10 @@ static void sha2Hash(unsigned *input, int totalBlocks, unsigned *outHashes) {
   outHashes[6] = h6;
   outHashes[7] = h7;
 }
+#endif // End scalar/spmd implementation
 
+// Glue code for SPMD kernel version
+#ifdef VARIANT_SPMD
 struct KernelData {
   unsigned *input;
   int totalBlocks;
@@ -228,11 +233,15 @@ static void kernel_wrapper(void *data_) {
   sha2Hash((unsigned *)data->input[id], data->totalBlocks,
            (unsigned *)data->outHashes[id]);
 }
-// End scalar/spmd implementation
+#endif
 
-// Benchmark hooks
-
+// Benchmark entry points
 void hash(void (*f)(vecu16_t *, int, vecu16_t *)) {
+#if USE_THREADS
+  static volatile int gActiveThreadCount = 0;
+  start_all_threads();
+#endif
+
   const int kSourceBlockSize = 128;
   const int kHashSize = 32;
   const int kNumBuffers = 2;
@@ -248,14 +257,32 @@ void hash(void (*f)(vecu16_t *, int, vecu16_t *)) {
   vecu16_t tmpPtr = inputPtr + kSourceBlockSize * kNumLanes;
   vecu16_t outputPtr = tmpPtr + kHashSize * kNumLanes;
 
+#if USE_THREADS
+  __sync_fetch_and_add(&gActiveThreadCount, 1);
+#endif
+
   for (int i = 0; i < 4; i++) {
     // Double sha-2 hash
     f(&inputPtr, kSourceBlockSize / kHashSize, &outputPtr);
     f(&tmpPtr, 1, &outputPtr);
   }
+
+#if USE_THREADS
+  __sync_fetch_and_add(&gActiveThreadCount, -1);
+  // Wait for all threads to finish, then terminate all except thread 0
+  if (get_current_thread_id() == 0) {
+    while (gActiveThreadCount > 0)
+      ;
+    REGISTERS[REG_THREAD_HALT] = 0xffffffe;
+  } else {
+    while (1)
+      ;
+  }
+#endif
 }
 
 extern "C" {
+#ifdef VARIANT_SCALAR
 void hash_scalar() {
   hash([](vecu16_t *input, int totalBlocks, vecu16_t *output) {
     auto inp = (unsigned *)input;
@@ -265,72 +292,22 @@ void hash_scalar() {
     }
   });
 }
+#endif
 
+#ifdef VARIANT_SPMD
 void hash_spmd() {
   hash([](vecu16_t *input, int totalBlocks, vecu16_t *output) {
     KernelData data = {(unsigned *)input, totalBlocks, (unsigned *)output};
     __builtin_nyuzi_spmd_call((void *)kernel_wrapper, &data);
   });
 }
+#endif
 
-void hash_intrinsics() {
+#ifdef VARIANT_INTRIN
+void hash_intrin() {
   hash([](vecu16_t *input, int totalBlocks, vecu16_t *output) {
     sha2Hash(*input, totalBlocks, *output);
   });
 }
+#endif
 }
-
-// The original main function, adapted to call the SPMD kernel.
-// Useful as another comparison point vs the hand vectorized version
-/*
-static volatile int gActiveThreadCount = 0;
-
-// Each thread starts here and performs 16 hashes simultaneously. With four
-// threads, there are 64 hashes in flight at a time. Each thread repeats this
-// four times.  The total number of hashes performed is 256.
-int main() {
-  start_all_threads();
-
-  const int kSourceBlockSize = 128;
-  const int kHashSize = 32;
-  const int kNumBuffers = 2;
-  const int kNumLanes = 16;
-
-  unsigned int basePtr =
-      0x100000 +
-      get_current_thread_id() * (kHashSize * kNumLanes * kNumBuffers) +
-      (kSourceBlockSize * kNumLanes);
-  const vecu16_t kStepVector = {0, 1, 2,  3,  4,  5,  6,  7,
-                                8, 9, 10, 11, 12, 13, 14, 15};
-  vecu16_t inputPtr = vecu16_t(basePtr) + (kStepVector * vecu16_t(kHashSize));
-  vecu16_t tmpPtr = inputPtr + kSourceBlockSize * kNumLanes;
-  vecu16_t outputPtr = tmpPtr + kHashSize * kNumLanes;
-
-  __sync_fetch_and_add(&gActiveThreadCount, 1);
-
-  for (int i = 0; i < 4; i++) {
-    // Double sha-2 hash
-    KernelData d1 = {(unsigned *)&inputPtr, kSourceBlockSize / kHashSize,
-                     (unsigned *)&outputPtr};
-    __builtin_nyuzi_spmd_call((void *)kernel_wrapper, &d1);
-    KernelData d2 = {(unsigned *)&tmpPtr, 1, (unsigned *)&outputPtr};
-    __builtin_nyuzi_spmd_call((void *)kernel_wrapper, &d2);
-    // sha2Hash(inputPtr, kSourceBlockSize / kHashSize, outputPtr);
-    // sha2Hash(tmpPtr, 1, outputPtr);
-  }
-
-  __sync_fetch_and_add(&gActiveThreadCount, -1);
-  if (get_current_thread_id() == 0) {
-    while (gActiveThreadCount > 0)
-      ;
-
-    int endTime = get_cycle_count();
-    printf("%g cycles per hash\n", (float)endTime / 256);
-  } else {
-    while (1)
-      ;
-  }
-
-  return 0;
-}
-*/

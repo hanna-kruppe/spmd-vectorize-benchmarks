@@ -1,0 +1,20 @@
+[package]
+name = "rust_nyuzi_staticlib"
+version = "0.1.0"
+authors = ["Robin Kruppe <robin.kruppe@gmail.com>"]
+
+[lib]
+crate-type = ["staticlib"]
+
+[profile.release]
+lto = true
+
+[dependencies]
+fib = { path = "../fib", optional = true }
+nbody = { path = "../nbody", optional = true }
+fwt = { path = "../fwt", optional = true }
+
+[features]
+link_fib = ["fib"]
+link_nbody = ["nbody"]
+link_fwt = ["fwt"]

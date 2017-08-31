@@ -1,9 +1,9 @@
 #![feature(core_intrinsics, lang_items)]
 #![no_std]
 
-extern crate fib;
-extern crate nbody;
-extern crate fwt;
+#[cfg(feature="link_fib")] extern crate fib;
+#[cfg(feature="link_nbody")] extern crate nbody;
+#[cfg(feature="link_fwt")] extern crate fwt;
 
 use core::intrinsics;
 

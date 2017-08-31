@@ -81,7 +81,7 @@ fn main() {
     let mut f = File::create(&dest_path).unwrap();
 
     let mut rng = XorShiftRng::from_seed([0, 1, 2, 3]);
-    let bodies = create_data(16, &mut rng);
+    let bodies = create_data(32, &mut rng);
     write!(&mut f, "static BODIES_INIT: [Body; BENCH_BODIES] = ").unwrap();
     write_bodies(&mut f, &bodies).unwrap();
 }

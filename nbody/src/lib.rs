@@ -33,6 +33,7 @@
 //
 // [1]: https://github.com/IntelLabs/RiverTrail/blob/master/examples/nbody-webgl/NBody.js
 #![no_std]
+#![allow(dead_code)]
 extern crate nyuzi_support;
 
 use nyuzi_support::{black_box, spmd_zip2, sin, cos, sqrt};
@@ -319,7 +320,7 @@ impl Div<f32> for Vector3 {
 
 // Bench data
 
-const BENCH_BODIES: usize = 16;
+const BENCH_BODIES: usize = 32;
 
 const BENCH_TICKS: usize = 10;
 
@@ -357,6 +358,7 @@ unsafe fn get_data() -> NBodyBenchmark<'static> {
 }
 
 #[no_mangle]
+#[cfg(variant="scalar")]
 pub extern "C" fn nbody_scalar() {
     let mut nbody = unsafe { get_data() };
 
@@ -368,6 +370,7 @@ pub extern "C" fn nbody_scalar() {
 }
 
 #[no_mangle]
+#[cfg(variant="spmd")]
 pub extern "C" fn nbody_spmd() {
     let mut nbody = unsafe { get_data() };
 

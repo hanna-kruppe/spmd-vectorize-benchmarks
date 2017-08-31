@@ -4,4 +4,4 @@ version = "0.1.0"
 authors = ["Robin Kruppe <robin.kruppe@gmail.com>"]
 
 [dependencies]
-nyuzi_support = { path = "../_rust_support" }
+nyuzi_support = { path = "../rust_nyuzi_support" }
