@@ -12,7 +12,15 @@ def add_speedup(res, *, of, over):
     if name not in PROPERTIES:
         PROPERTIES.append(name)
 
-PROPERTIES = "scalar,scalar_threads,spmd,spmd_threads,intrin,intrin_threads".split(',')
+def add_size_increase(res, *, kind, baseline):
+    size_baseline = float(res[baseline + '_' + kind + 'size'])
+    size_spmd = float(res['spmd_' + kind + 'size'])
+    name = kind + ' size increase over ' + baseline
+    res[name] = round(size_spmd / size_baseline, 2)
+    if name not in PROPERTIES:
+        PROPERTIES.append(name)
+
+PROPERTIES = "scalar,spmd,intrin,scalar_objsize,scalar_exesize,spmd_objsize,spmd_exesize,intrin_objsize,intrin_exesize".split(',')
 
 def main():
     # read measurements
@@ -24,47 +32,28 @@ def main():
         variant = data_point['variant']
         assert variant in PROPERTIES
         cycle_measurements = data_point['cycles']
-        assert len(set(cycle_measurements)) == 1, "TODO do something with varying cycle counts"
+        assert len(set(cycle_measurements)) == 1, "TODO varying cycle counts??"
         results[bench][variant] = cycle_measurements[0]
-        if variant in {'scalar', 'spmd', 'intrin'}:
-            objkey = variant + '_objsize'
-            results[bench][objkey] = data_point['obj_size']
-            if objkey not in PROPERTIES:
-                PROPERTIES.append(objkey)
-            exekey = variant + '_exesize'
-            results[bench][exekey] = data_point['exe_size']
-            if exekey not in PROPERTIES:
-                PROPERTIES.append(exekey)
-    for bench in results.keys():
-        obj_size = data_point['obj_size']
+        results[bench][variant + '_objsize'] = data_point['obj_size']
+        results[bench][variant + '_exesize'] = data_point['exe_size']
 
-    # compute speedups and size reductions
+    # compute speedups
     for res in results.values():
         add_speedup(res, of='spmd', over='scalar')
-        if 'scalar_threads' in res:
-            add_speedup(res, of='spmd_threads', over='scalar_threads')
         if 'intrin' in res:
             add_speedup(res, of='intrin', over='scalar')
             add_speedup(res, of='spmd', over='intrin')
-        if 'intrin_threads' in res:
-            add_speedup(res, of='intrin_threads', over='scalar_threads')
-            add_speedup(res, of='spmd_threads', over='intrin_threads')
-        res['obj size increase over scalar'] = round(float(res['spmd_objsize']) / float(res['scalar_objsize']), 2)
-        res['exe size increase over scalar'] = round(float(res['spmd_exesize']) / float(res['scalar_exesize']), 2)
-        if 'intrin_objsize' in res:
-            res['obj size increase over intrin'] = round(float(res['spmd_objsize']) / float(res['intrin_objsize']), 2)
-            res['exe size increase over intrin'] = round(float(res['spmd_exesize']) / float(res['intrin_exesize']), 2)
-
-    PROPERTIES.append('obj size increase over scalar')
-    PROPERTIES.append('obj size increase over intrin')
-    PROPERTIES.append('exe size increase over scalar')
-    PROPERTIES.append('exe size increase over intrin')
+    # compute size increases
+    for res in results.values():
+        for kind in ('obj', 'exe'):
+            add_size_increase(res, kind=kind, baseline='scalar')
+            if 'intrin' in res:
+                add_size_increase(res, kind=kind, baseline='intrin')
 
     # -> sorta-pretty csv
-    headers = sorted(results)
-    csv_data = [[None] + headers]
-    for prop in PROPERTIES:
-        csv_data.append([prop] + [results[res_key].get(prop) for res_key in headers])
+    csv_data = [[None] + PROPERTIES]
+    for bench, res in sorted(results.items()):
+        csv_data.append([bench] + [res.get(prop) for prop in PROPERTIES])
     with open('bench-data.csv', 'w', newline='') as f:
         csvwriter = csv.writer(f)
         for csv_row in csv_data:

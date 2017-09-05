@@ -1,38 +1,5 @@
 #include <stdio.h>
 
-/*extern "C" {
-void fib_scalar();
-void fib_spmd();
-void nbody_scalar();
-void nbody_spmd();
-void mandelbrot_scalar();
-void mandelbrot_spmd();
-void mandelbrot_intrinsics();
-void hash_scalar();
-void hash_spmd();
-void hash_intrinsics();
-void fwt_scalar();
-void fwt_spmd();
-void fwt_nomod_scalar();
-void fwt_nomod_spmd();
-}
-
-namespace {
-struct Benchmark {
-  const char *name;
-  const char *variant;
-  void (*func)();
-};
-
-Benchmark BENCHMARKS[] = {
-    {"fib", fib_scalar, fib_spmd, nullptr},
-    {"nbody", nbody_scalar, nbody_spmd, nullptr},
-    {"mandelbrot", mandelbrot_scalar, mandelbrot_spmd, mandelbrot_intrinsics},
-    {"hash", hash_scalar, hash_spmd, hash_intrinsics},
-    {"fwt", fwt_scalar, fwt_spmd, nullptr},
-    {"fwt_nomod", fwt_nomod_scalar, fwt_nomod_spmd, nullptr}};
-*/
-
 #if !defined(BENCH_NAME) || !defined(BENCH_VARIANT)
 #error "Missing BENCH_NAME / BENCH_VARIANT"
 #endif

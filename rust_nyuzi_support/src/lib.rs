@@ -137,28 +137,34 @@ fn spmd<T, F>(x: &mut [T], kernel: F)
     run_scalar(x, kernel);
 }
 
+#[cfg(not(rust_trig))]
 mod math {
+    // Bindings to libm, using wrapper functions for safety
+    mod ffi {
+        extern {
+            pub fn sinf(x: f32) -> f32;
+            pub fn cosf(x: f32) -> f32;
+            pub fn sqrtf(x: f32) -> f32;
+        }
+    }
+
+    pub fn sin(x: f32) -> f32 {
+        unsafe { ffi::sinf(x) }
+    }
+
+    pub fn cos(x: f32) -> f32 {
+        unsafe { ffi::cosf(x) }
+    }
+
+    pub fn sqrt(x: f32) -> f32 {
+        unsafe { ffi::sqrtf(x) }
+    }
+}
+#[cfg(rust_trig)]
+mod math {
+    // Port of parts of Jeff Bush's libm for Nyuzi, to allow
+    // Rust code to have vectorized trig functions available
     use core::f32::consts::PI;
-    /*
-    extern {
-        fn sinf(x: f32) -> f32;
-        fn cosf(x: f32) -> f32;
-        fn sqrtf(x: f32) -> f32;
-    }
-
-    pub fn sin_wrapper(x: f32) -> f32 {
-        unsafe { sinf(x) }
-    }
-
-    pub fn cos_wrapper(x: f32) -> f32 {
-        unsafe { cosf(x) }
-    }
-
-    pub fn sqrt_wrapper(x: f32) -> f32 {
-        unsafe { sqrtf(x) }
-    }*/
-
-    // TODO evaluate perf with cross-module speculative call to vectorized libc
 
     #[inline]
     fn fmod(val1: f32, val2: f32) -> f32 {
@@ -232,9 +238,6 @@ mod math {
 }
 
 pub use math::{sin, cos, sqrt};
-/*pub use math::sin_wrapper as sin;
-pub use math::cos_wrapper as cos;
-pub use math::sqrt_wrapper as sqrt;*/
 
 #[macro_export]
 macro_rules! printf {

@@ -36,19 +36,21 @@ def sh(cli, **kwargs):
         print(proc.stdout.decode('utf-8'))
     proc.check_returncode()
 
-def _build_rust_variant(bench, variant, features):
-    print("Building Rust benchmark:", bench, variant)
+def _build_rust_variant(bench, variant, features, rust_trig):
+    print("Building Rust benchmark:", bench, variant, "(rust trig)" if rust_trig else "")
     os.chdir('rust_nyuzi_staticlib')
     env = dict(os.environ)
     assert 'RUSTFLAGS' not in env
     env['RUSTFLAGS'] = '--cfg benchmark="{}" --cfg variant="{}"'.format(bench, variant)
+    if rust_trig:
+        env['RUSTFLAGS'] += ' --cfg rust_trig'
     sh(['xargo', 'build', '--target=nyuzi-elf-none', '--release', '--features', features],
        env=env)
     CARGO_OUTPUT = 'target/nyuzi-elf-none/release/librust_nyuzi_staticlib.a'
     archive = OUT_DIR / (bench  + '_' + variant + '.a')
     shutil.copy(str(CARGO_OUTPUT), str(archive))
     os.chdir('..')
-    return _build_harness(bench, variant, archive)
+    return _build_harness(bench, variant, archive, rust_trig=rust_trig)
 
 def _build_cxx_variant(bench, variant, source_file, threads):
     defines = ['-DBENCH_' + bench.upper(), '-DVARIANT_' + variant.upper()]
@@ -57,13 +59,15 @@ def _build_cxx_variant(bench, variant, source_file, threads):
     print("Building C++ benchmark:", bench, variant, "(threads)" if threads else "")
     obj = OUT_DIR / (bench + '_' + variant + '.o')
     sh([CLANG, source_file, *CXXFLAGS, *INCLUDES, *defines, '-c', '-o', obj])
-    return _build_harness(bench, variant, obj, threads)
+    return _build_harness(bench, variant, obj, threads=threads)
 
-def _build_harness(bench, variant, bench_obj, threads=False):
+def _build_harness(bench, variant, bench_obj, *, threads=False, rust_trig=False):
     defines = ['-DBENCH_NAME=' + bench, '-DBENCH_VARIANT=' + variant]
     if threads:
         defines.append('-DUSE_THREADS')
-        variant += '_threads'
+        bench += '_threads'
+    if rust_trig:
+        bench += '_vectrig'
     elf_path = OUT_DIR / (bench + '_' + variant + '.elf')
     hex_path = elf_path.with_suffix('.hex')
     sh([CLANG, bench_obj, 'harness.cpp', *CXXFLAGS, *INCLUDES, *CRT, *defines,
@@ -71,9 +75,9 @@ def _build_harness(bench, variant, bench_obj, threads=False):
     sh([ELF2HEX, elf_path, '-o', hex_path])
     return (bench, variant, hex_path, bench_obj, elf_path)
 
-def build_rust(name, features):
-    yield _build_rust_variant(name, 'scalar', features)
-    yield _build_rust_variant(name, 'spmd', features)
+def build_rust(name, features, rust_trig=False):
+    yield _build_rust_variant(name, 'scalar', features, rust_trig)
+    yield _build_rust_variant(name, 'spmd', features, rust_trig)
 
 def build_cxx(name, source_file):
     for variant in ('scalar', 'spmd', 'intrin'):
@@ -87,6 +91,7 @@ def build_all():
         *build_rust('fib_iter', features='link_fib'),
         *build_rust('fib_rec', features='link_fib'),
         *build_rust('nbody', features='link_nbody'),
+        *build_rust('nbody', features='link_nbody', rust_trig=True),
         *build_rust('fwt', features='link_fwt'),
         *build_rust('fwt_nodivmod', features='link_fwt'),
     ]
