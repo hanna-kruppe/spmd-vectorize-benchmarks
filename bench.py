@@ -57,7 +57,10 @@ def _build_cxx_variant(bench, variant, source_file, threads):
     if threads:
         defines.append('-DUSE_THREADS')
     print("Building C++ benchmark:", bench, variant, "(threads)" if threads else "")
-    obj = OUT_DIR / (bench + '_' + variant + '.o')
+    if threads:
+        obj = OUT_DIR / (bench + '_' + variant + '.o')
+    else:
+        obj = OUT_DIR / (bench + '_threads_' + variant + '.o')
     sh([CLANG, source_file, *CXXFLAGS, *INCLUDES, *defines, '-c', '-o', obj])
     return _build_harness(bench, variant, obj, threads=threads)
 
